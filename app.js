@@ -1,22 +1,16 @@
 ﻿const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const fs = require('fs');
+const cache = require('./cache.js');
+const storage = require('./storage.js');
 
 // ========== Настройки ==========
 const token = '8435499224:AAHaUWQa0n8QASIiVQkYp4_skDiu_ftUQ48';
 const bot = new TelegramBot(token, { polling: true });
 
-let users = new Set();
-let alerts = {};
+let users = storage.loadUsers();
+let alerts = storage.loadAlerts();
 let dialogState = {};
-
-let cachedUSDRate = null;
-let cachedRateTime = 0;
-let cachedBTC30 = null;
-let cachedBTC30Time = 0;
-let price30DaysAgo = {}; // динамические 30-дневные цены
-let cachedTopPairsTime = 0;
-let cachedTopPairs = []; // динамический список монет
 
 // ======= Эмодзи для популярных монет =======
 const coinEmojis = {
@@ -60,10 +54,8 @@ async function fetchTopPairs(limit = 10) {
 
 // Функция для выдачи кеша
 async function getTopPairs(limit = 10) {
-    if (cachedTopPairs.length === 0) {
-        await fetchTopPairs(limit);
-    }
-    return cachedTopPairs;
+    const pairs = await cache.getTopPairs(fetchTopPairs, limit);
+    return pairs;
 }
 
 // ======= Автообновление =======
@@ -100,16 +92,8 @@ async function getUSDRate() {
     }
 }
 async function getCachedUSDRate() {
-    const now = Date.now();
-    if (cachedUSDRate && (now - cachedRateTime) < 60 * 60 * 1000) {
-        return cachedUSDRate;
-    }
-    const rate = await getUSDRate();
-    if (rate) {
-        cachedUSDRate = rate;
-        cachedRateTime = now;
-    }
-    return cachedUSDRate;
+    const rate = await cache.getCachedUSDRate(getUSDRate);
+    return rate;
 }
 
 // ======= Цена 30 дней назад для всех монет =======
@@ -137,16 +121,8 @@ async function get30DaysAgoPrice(symbol) {
 }
 
 async function getCached30DaysPrice(symbol) {
-    const now = Date.now();
-    if (price30DaysAgo[symbol] && (now - cachedBTC30Time) < 24 * 60 * 60 * 1000) {
-        return price30DaysAgo[symbol];
-    }
-    const price = await get30DaysAgoPrice(symbol);
-    if (price) {
-        price30DaysAgo[symbol] = price;
-        cachedBTC30Time = now;
-    }
-    return price30DaysAgo[symbol];
+    const price = await cache.getCached30DaysPrice(symbol, get30DaysAgoPrice);
+    return price;
 }
 
 // ======= Главное меню =======
